@@ -1,3 +1,4 @@
+# Top-level: Thruster name. 2nd level: - Power(W), Thrust(N), Isp(s)
 BHT-1500:
    - 1000 0.068 1615
    - 1000 0.058 1860 
