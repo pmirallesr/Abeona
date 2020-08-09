@@ -7,7 +7,7 @@ import pygmo as pg
 import math
 import matplotlib.pyplot as plt
 import time
-from date_utils import mjd2000_to_date
+from utils.date_utils import mjd2000_to_date
 
 months = {1:"January",
           2:"February",
