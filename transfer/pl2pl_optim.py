@@ -31,16 +31,33 @@ logging.getLogger('matplotlib').setLevel(logging.WARNING)
 possible_models = ['BHT-1500']
 
 
+class Engine:
+    def __init__(self, name, yaml_engine):
+        self.name = name
+        self.modes = [mode_str.split() for mode_str in yaml_engine["modes"]]
+        # Clean modes from string to number
+        for mode in self.modes:
+            for i, spec in enumerate(mode):
+                mode[i] = float(spec)
+        self.throttle = yaml_engine["throttle"]["range"] if "throttle" in yaml_engine else None
+    def __str__(self):
+        modes_str = ''
+        if self.throttle:
+            throttle_str = ('Throttle range: ' + str(self.throttle[0]*100) + '% - ' + str(self.throttle[1]*100) + '%')
+        else:
+            throttle_str = 'Not throttable'
+        for mode in self.modes:
+            modes_str += f"Power: {mode[0]:5.0f} W, Thrust: {mode[1]:0.3f} N, Isp: {mode[2]:4.0f} s \n" 
+        return (f"{self.name}, {throttle_str}. \n"
+                f"Operation modes \n"
+                f"{modes_str} ")
+
 def load_engines(yaml_path):
     engines = {}
     with open(yaml_path, "r") as yaml_file:
         yaml_content = yaml.load(yaml_file, Loader=yaml.FullLoader)
-        for engine in yaml_content:
-            engines[engine] = [mode_str.split() for mode_str in yaml_content[engine]]
-            # Clean modes
-            for mode in engines[engine]:
-                for i, spec in enumerate(mode):
-                    mode[i] = float(spec)
+        for engine, specs in yaml_content.items():
+            engines[engine] = Engine(engine, specs)
     return engines
         
 def print_args(args, et_models):
@@ -152,9 +169,7 @@ if __name__ == "__main__":
     logger.setLevel(log_level)
     
     if args.list_modes:
-        for i, mode in enumerate(et_models[args.model]):
-            eff = mode[1]*mode[2]*9.81*0.5/mode[0]*100
-            print(f"Mode {i:2d}: {mode[0]:.0f} W \t {mode[1]:.3f} N \t {mode[2]:.0f} s, Efficiency: {eff:.2f} %")
+        print(et_models[args.model])
         exit()
     main(args)
     print_args(args, et_models)
