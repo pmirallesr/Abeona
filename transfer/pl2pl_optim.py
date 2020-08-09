@@ -63,7 +63,6 @@ def print_args(args, et_models):
         
 def main(args):
     if args.model:
-        
         logger.debug(f"Models available: {et_models}")
         et_mode = et_models[args.model][args.mode]
         logger.debug(f"You've chosen {args.model} at mode {et_mode}")
@@ -105,7 +104,7 @@ def main(args):
 
 if __name__ == "__main__":
     
-    et_models = load_engines("engines.yaml")
+    et_models = load_engines("data/engines.yaml")
     
     logger = logging.getLogger()
     # PROGRAM
