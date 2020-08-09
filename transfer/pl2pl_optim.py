@@ -46,8 +46,8 @@ class Engine:
             throttle_str = ('Throttle range: ' + str(self.throttle[0]*100) + '% - ' + str(self.throttle[1]*100) + '%')
         else:
             throttle_str = 'Not throttable'
-        for mode in self.modes:
-            modes_str += f"Power: {mode[0]:5.0f} W, Thrust: {mode[1]:0.3f} N, Isp: {mode[2]:4.0f} s \n" 
+        for i, mode in enumerate(self.modes):
+            modes_str += f"Mode {i:2d} => Power: {mode[0]:5.0f} W, Thrust: {mode[1]:0.3f} N, Isp: {mode[2]:4.0f} s \n" 
         return (f"{self.name}, {throttle_str}. \n"
                 f"Operation modes \n"
                 f"{modes_str} ")
@@ -81,7 +81,8 @@ def print_args(args, et_models):
 def main(args):
     if args.model:
         logger.debug(f"Models available: {et_models}")
-        et_mode = et_models[args.model][args.mode]
+        engine = et_models[args.model]
+        et_mode = engine.modes[args.mode]
         logger.debug(f"You've chosen {args.model} at mode {et_mode}")
         _, args.thrust, args.isp = et_mode
         
