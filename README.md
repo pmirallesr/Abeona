@@ -16,8 +16,6 @@ python -m transfer.pl2pl_optim --help
 You should expect the following output:
 	
 ```
-/home/pmirallesr/Documents/MarsStudy/Abeona/transfer/pl2pl_optim.py:37: YAMLLoadWarning: calling yaml.load() without Loader=... is deprecated, as the default Loader is unsafe. Please read https://msg.pyyaml.org/load for full details.
-  yaml_content = yaml.load(yaml_file)
 usage: pl2pl_optim.py [-h] [--log_level LOG_LEVEL] [--mass MASS] [--thrust THRUST] [--isp ISP] [--model MODEL] [--mode MODE] [--list_modes] [--t0 T0 T0] [--tof TOF TOF]
                       [--vinf_dep VINF_DEP] [--vinf_arr VINF_ARR] [--nseg NSEG]
 

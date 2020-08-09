@@ -34,7 +34,7 @@ possible_models = ['BHT-1500']
 def load_engines(yaml_path):
     engines = {}
     with open(yaml_path, "r") as yaml_file:
-        yaml_content = yaml.load(yaml_file)
+        yaml_content = yaml.load(yaml_file, Loader=yaml.FullLoader)
         for engine in yaml_content:
             engines[engine] = [mode_str.split() for mode_str in yaml_content[engine]]
             # Clean modes
