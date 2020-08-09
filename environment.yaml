@@ -1,0 +1,11 @@
+name: abeona
+dependencies:
+    - python=3.8.5
+    - pip
+    - numpy
+    - pyyaml
+    - pykep=2.5
+    - pygmo=2.15.0
+    - boost
+    - cmake
+    - matplotlib

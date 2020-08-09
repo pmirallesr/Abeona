@@ -58,7 +58,7 @@ class direct_pl2pl(_direct_base):
         else:
             raise TypeError("Planet names must be supplied as str.")
 
-        # bounds TODO check
+        # bounds 
         assert t0[1] - t0[0] >= tof[0]
         assert all(t > 0 for t in tof)
         assert tof[1] > tof[0]
@@ -84,6 +84,7 @@ class direct_pl2pl(_direct_base):
 
         # controls
         u = z[9:]
+        print(u)
 
         # compute Cartesian states of planets
         r0, v0 = self.p0.eph(t0)
@@ -110,7 +111,9 @@ class direct_pl2pl(_direct_base):
 
         # compute inequality constraints
         cineq = np.asarray(self.leg.throttles_constraints(), np.float64)
-
+        
+#         thrott_eq = 
+        
         # compute inequality constraints on departure and arrival velocities
         v_dep_con = (z[3] ** 2 + z[4] ** 2 + z[5] ** 2 - self.vinf_dep ** 2)
         v_arr_con = (z[6] ** 2 + z[7] ** 2 + z[8] ** 2 - self.vinf_arr ** 2)
@@ -123,6 +126,8 @@ class direct_pl2pl(_direct_base):
 
     def obj_func(self, z):
         tof, mf, = z[1:3]
+        # Convert from power to general mass
+        # Restrict thrusts to 0 or 1
         return -(self.w_mass*mf + self.w_tof*tof)
     
     def get_nic(self):
