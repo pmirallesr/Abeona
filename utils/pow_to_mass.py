@@ -9,7 +9,7 @@ inherent_degradation = 0.23 # Inherent loss of efficiency from construction loss
 packaging_loss = 0.1 # Losses from imperfect packaging
 surface_density = 5.06 # kg/m2
 
-def pow_to_mass(power, t, d=None, planet='mars'):
+def pow_to_mass(power, tof, d):
     """
     Given a certain power, a time, and a distance, returns the mass of the associated power systems.
     If a planet name is passed, the distance of said planet to the sun at that time will be calculated.
@@ -18,29 +18,29 @@ def pow_to_mass(power, t, d=None, planet='mars'):
         x: double, distance to sun in AU 
         t: Time in mjd2000 
         planet: Planet being orbited. Defaults to mars
-     
+        t0: Date of mission start. 1 April 2026 by default
     """
     m_ancillary = POWER_ANCILLARY*power
-    if d:
-        return m_ancillary + pow_to_panel_mass(power, d, t) # 
-    else:
-        planet = pk.planet.jpl_lp(planet)
-        x = planet.eph(t)[0]
-        d = np.linalg.norm(x)/pk.AU
-        return m_ancillary + pow_to_panel_mass(power, d, t) # 
+    return m_ancillary + pow_to_panel_mass(power, tof, d) # 
+#     else:
+#         planet = pk.planet.jpl_lp(planet)
+#         x = planet.eph(t0)[0]
+#         d = np.linalg.norm(x)/pk.AU
+#         return m_ancillary + pow_to_panel_mass(power, t, d) # 
 
 
-def pow_to_panel_mass(power, x, t):
+def pow_to_panel_mass(power, tof, d):
     '''
     Returns the amount of solar panel mass required to supply power p at time t
     Args:
         power: Required power
-        t: date in mjd2000
+        tof: days since launch
         planet: pykep planet
     '''
-    ageing_eff_loss = 1 - (1-avg_eff_loss_year)**t # Loss of avg_eff_loss every year
+    tof = tof/365.25
+    ageing_eff_loss = 1 - (1-avg_eff_loss_year)**tof # Loss of avg_eff_loss every year
     total_eff = 1*(1-ageing_eff_loss)*(1-inherent_degradation)*(1-packaging_loss)
-    pflux_t = SOLAR_CONSTANT/(x**2)
+    pflux_t = SOLAR_CONSTANT/(d**2)
     eff_pflux_t = pflux_t*total_eff
     panel_area = power/eff_pflux_t
     panel_mass = panel_area*surface_density
