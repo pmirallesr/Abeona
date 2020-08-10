@@ -1,11 +1,13 @@
 from pykep.trajopt._direct import _direct_base
 import pykep as pk
 import numpy as np
+from utils.pow_to_mass import pow_to_mass as pw2m
 
 defaults = {
-    "w_mass": 0.5, "w_tof":0.5}
+    "w_mass": 0.5, "w_tof":0.5,
+    "prop_eff": 0.5}
 
-class direct_pl2pl(_direct_base):
+class direct_pl2pl_mod(_direct_base):
     """Represents a direct transcription transfer between solar system planets.
 
     This problem works by manipulating the starting epoch t0, the transfer time T the final mass mf and the controls 
@@ -20,6 +22,7 @@ class direct_pl2pl(_direct_base):
                  mass=1000,
                  thrust=0.3,
                  isp=3000,
+                 power=None,
                  nseg=20,
                  t0=[500, 1000],
                  tof=[200, 500],
@@ -42,12 +45,19 @@ class direct_pl2pl(_direct_base):
             - vinf_arr (``float``): allowed arrival DV [km/s]
             - hf (``bool``): High-fidelity. Activates a continuous representation for the thrust.
         """
+        # Init args
         self.args = defaults
         for arg in self.args:
             if arg in kwargs:
                 self.args[arg] = kwargs[arg]
+        # Init optim weights
         self.w_mass = self.args["w_mass"]
         self.w_tof = self.args["w_tof"]
+        # Init power
+        if power:
+            self.power = power
+        else:
+            self.power = 0.5*thrust*isp/self.args["prop_eff"]
         # initialise base
         _direct_base.__init__(self, mass, thrust, isp, nseg, pk.MU_SUN, hf)
 
@@ -74,7 +84,7 @@ class direct_pl2pl(_direct_base):
         self.mu = pk.MU_SUN
 
     def fitness(self, z):
-
+        # z = t0, tof, mf, [vinf_0], [vinf_f], [u]
         # epochs (mjd2000)
         t0 = pk.epoch(z[0])
         tf = pk.epoch(z[0] + z[1])
@@ -82,9 +92,8 @@ class direct_pl2pl(_direct_base):
         # final mass
         mf = z[2]
 
-        # controls
+        # controls: 60 element vector, probably containing ux, uy, uz for each segment
         u = z[9:]
-        print(u)
 
         # compute Cartesian states of planets
         r0, v0 = self.p0.eph(t0)
@@ -112,7 +121,6 @@ class direct_pl2pl(_direct_base):
         # compute inequality constraints
         cineq = np.asarray(self.leg.throttles_constraints(), np.float64)
         
-#         thrott_eq = 
         
         # compute inequality constraints on departure and arrival velocities
         v_dep_con = (z[3] ** 2 + z[4] ** 2 + z[5] ** 2 - self.vinf_dep ** 2)
@@ -125,10 +133,13 @@ class direct_pl2pl(_direct_base):
         return np.hstack(([self.obj_func(z)], ceq, cineq, [v_dep_con, v_arr_con]))
 
     def obj_func(self, z):
-        tof, mf, = z[1:3]
+        # z = t0, tof, mf, [vinf_0], [vinf_f], [u]
+        tof, mf = z[1:3]
+        tf = tof + z[0]
+        mpow = pw2m(self.power, tf, planet='mars')
+        mt = mf + mpow
         # Convert from power to general mass
-        # Restrict thrusts to 0 or 1
-        return -(self.w_mass*mf + self.w_tof*tof)
+        return -(self.w_mass*mt + self.w_tof*tof)
     
     def get_nic(self):
         return super().get_nic() + 2
