@@ -8,6 +8,7 @@ import math
 import matplotlib.pyplot as plt
 import time
 from utils.date_utils import mjd2000_to_date
+import transfer.mod_problems.direct_pl2pl_mod as tropt_mod
 
 months = {1:"January",
           2:"February",
@@ -87,7 +88,7 @@ def main(args):
         _, args.thrust, args.isp = et_mode
         
     algo = algo_factory("slsqp")
-    earth_to_mars = add_gradient(tropt.direct_pl2pl(p0=dep,
+    earth_to_mars = add_gradient(tropt_mod.direct_pl2pl_mod(p0=dep,
                                        pf=tgt,
                                        mass=args.mass,
                                        thrust=args.thrust,
