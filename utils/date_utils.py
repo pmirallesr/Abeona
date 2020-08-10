@@ -2,7 +2,7 @@
 Functions for converting dates to/from JD and MJD. Assumes dates are historical
 dates, including the transition from the Julian calendar to the Gregorian
 calendar in 1582. No support for proleptic Gregorian/Julian calendars.
-:Author: Matt Davis
+:Author: Matt Davis, modified by Pablo Miralles
 :Website: http://github.com/jiffyclub
 """
 
