@@ -8,6 +8,8 @@ Go the folder where you want your project to be i.e. ~/Documents/MarsStudy and r
 ```
 git clone https://github.com/pmirallesr/Abeona
 cd Abeona
+conda config --add channels conda-forge
+conda config --set channel_priority strict
 conda env create -f environment.yaml
 conda activate abeona
 python -m transfer.pl2pl_optim --help
