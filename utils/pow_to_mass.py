@@ -4,7 +4,7 @@ import numpy as np
 SOLAR_CONSTANT = 1379 # Mean solar irradiance at mars
 POWER_ANCILLARY = 0.02 # Mass of ancillary equipment as % of total power provided (0.02 kg per WATT).
 avg_eff_loss_year = 0.025 # Efficiency loss on panels from one year of ageing
-min_panel_mass = 45.636 # Minimum panel mass stemming from other requirements
+min_panel_mass = 45.6 # Minimum panel mass stemming from other requirements
 inherent_degradation = 0.23 # Inherent loss of efficiency from construction losses
 packaging_loss = 0.1 # Losses from imperfect packaging
 surface_density = 5.06 # kg/m2
