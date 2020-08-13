@@ -3,12 +3,14 @@ import logging
 import pykep.trajopt as tropt
 from pykep.examples import add_gradient, algo_factory
 import yaml
+import time
 import pygmo as pg
 import math
 import matplotlib.pyplot as plt
-import time
 from utils.date_utils import mjd2000_to_date
 import transfer.mod_problems.direct_pl2pl_mod as tropt_mod
+import os
+import numpy as np
 
 months = {1:"January",
           2:"February",
@@ -31,7 +33,13 @@ logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 possible_models = ['BHT-1500']
 
-
+def create_dir(output):
+    try:
+        os.makedirs(output)
+        return output
+    except:
+        output += "bis"
+        return create_dir(output)
 class Engine:
     def __init__(self, name, yaml_engine):
         self.name = name
@@ -63,17 +71,18 @@ def load_engines(yaml_path):
         
 def print_args(args, et_models):
     if args.model:
-        specs = et_models[args.model][args.mode]
-        engine = f"{args.model}, at Power: {specs[0]:.0f} W, Thrust: {specs[1]:.3f} N, Isp: {specs[2]:.0f} s" 
+        engine = et_models[args.model]
+        specs = engine.modes[args.mode]
+        engine_str = f"{args.model}, at Power: {specs[0]:.0f} W, Thrust: {specs[1]:.3f} N, Isp: {specs[2]:.0f} s" 
     else:
         p = args.thrust*args.isp*9.81*0.5/0.5 #50% efficiency
-        engine = f"Power: {p:.0f}W, Thrust: {args.thrust:.3f} N, Specific Impulse: {args.isp:.0f} s"
+        engine_str = f"Power: {p:.0f}W, Thrust: {args.thrust:.3f} N, Specific Impulse: {args.isp:.0f} s"
     dep_date = mjd2000_to_date(args.t0[0])
     arr_date = mjd2000_to_date(args.t0[1])
     
     print(f"-"*120 + "\n" + f"-"*120 + "\n" +
           f"Spacecraft wet mass: {args.mass:.0f} kg \n"
-          f"Engine: {engine} \n"
+          f"Engine: {engine_str} \n"
           f"Dearture: {args.vinf_dep} km/s on {math.floor(dep_date[2])} of {months[dep_date[1]]}, {dep_date[0]} \n"
           f"Arrival: {args.vinf_arr} km/s on {math.floor(arr_date[2])} of {months[arr_date[1]]}, {arr_date[0]} \n"
           f"Time of flight from {args.tof[0]} to {args.tof[1]} days"
@@ -86,34 +95,47 @@ def main(args):
         et_mode = engine.modes[args.mode]
         logger.debug(f"You've chosen {args.model} at mode {et_mode}")
         _, args.thrust, args.isp = et_mode
-        
-    algo = algo_factory("slsqp")
-    earth_to_mars = add_gradient(tropt_mod.direct_pl2pl_mod(p0=dep,
-                                       pf=tgt,
-                                       mass=args.mass,
-                                       thrust=args.thrust,
-                                       isp=args.isp,
-                                       nseg=args.nseg,
-                                       t0=args.t0,
-                                       tof=args.tof,
-                                       vinf_dep=args.vinf_dep,
-                                       vinf_arr=args.vinf_arr,
-                                       hf=False),
-                                with_grad=True)
-    prob = pg.problem(earth_to_mars)
-    prob.c_tol = [1e-5] * prob.get_nc()
-    pop = pg.population(prob, 1)
-    start = time.time()
-    pop = algo.evolve(pop)
-    logger.info(f"Time elapsed: {(time.time() - start):.3f}")
-    if prob.feasibility_x(pop.champion_x):
-        logger.info("OPTIMAL FOUND!")
-    else:
-        logger.info("No solution found, try again")
-     
-    earth_to_mars.udp_inner.pretty(pop.champion_x)
-     
-     
+    done = False
+    while not done:
+        algo = algo_factory("slsqp")
+        earth_to_mars = add_gradient(tropt_mod.direct_pl2pl_mod(p0=dep,
+                                           pf=tgt,
+                                           mass=args.mass,
+                                           thrust=args.thrust,
+                                           isp=args.isp,
+                                           nseg=args.nseg,
+                                           t0=args.t0,
+                                           tof=args.tof,
+                                           vinf_dep=args.vinf_dep,
+                                           vinf_arr=args.vinf_arr,
+                                           hf=False),
+                                    with_grad=True)
+        prob = pg.problem(earth_to_mars)
+        prob.c_tol = [1e-5] * prob.get_nc()
+        pop = pg.population(prob, 1)
+        start = time.time()
+        pop = algo.evolve(pop)
+        logger.info(f"Time elapsed: {(time.time() - start):.3f}")
+        if prob.feasibility_x(pop.champion_x):
+            logger.info("OPTIMAL FOUND!")
+            done = True
+        else:
+            logger.info("No solution found, try again")
+#TODO: VERIFY THAT DISTANCES OUTPUT BY GET STATES ARE WRT SUN AND NOT EARTH. TRY TO DERIVE A SIMPLE RULE THAT ALLOWS YOU TO OBTAIN
+# DISTANCES WITHOUT PASSING THROUGH LEG.GET_STATES()!!!!!
+        results = earth_to_mars.udp_inner.pretty(pop.champion_x)
+        x = earth_to_mars.udp_inner.leg.get_states()[2]
+        # remove matchpoint duplicate
+        x.pop(args.nseg)
+        # convert to numpy.ndarray
+        x = np.asarray(x, np.float64)
+        x.reshape((args.nseg * 2 + 1, 3))
+        r = [(x[i][0]**2 + x[i][1]**2 + x[i][2]**2)**0.5 for i in range(0,len(x),3)]
+        plt.plot(range(len(r)), r)
+        plt.show()
+    f = open(args.output + "/solution.txt", 'w')
+    f.write(results)
+    f.close()
     earth_to_mars.udp_inner.plot_traj(pop.champion_x)
     plt.title("The trajectory in the heliocentric frame")
     earth_to_mars.udp_inner.plot_control(pop.champion_x)
@@ -131,6 +153,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--log_level", default="info", type=str,
         help="Set to off, info, or debug to control verbosity"
+    )
+    parser.add_argument(
+        "--output", default=f"output/{time.strftime('%m%d-%H%M', time.localtime())}", type=str,
+        help="Output folder"
     )
     # SPACECRAFT
     spacecraft_options = parser.add_argument_group("Spacecraft options")
@@ -173,9 +199,17 @@ if __name__ == "__main__":
     if args.list_modes:
         print(et_models[args.model])
         exit()
+    
+    args.output = create_dir(args.output)
+    f = open(args.output + "/args.txt", 'w')
+    f.write(str(vars(args)))
+    f.close()
+    
     main(args)
     print_args(args, et_models)
     
+
+            
     
     
     

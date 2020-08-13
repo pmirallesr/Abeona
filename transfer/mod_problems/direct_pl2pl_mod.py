@@ -2,11 +2,10 @@ from pykep.trajopt._direct import _direct_base
 import pykep as pk
 import numpy as np
 from utils.pow_to_mass import pow_to_mass as pw2m
-
+import time
 defaults = {
     "w_mass": 0.5, "w_tof":0.5,
     "prop_eff": 0.5}
-
 class direct_pl2pl_mod(_direct_base):
     """Represents a direct transcription transfer between solar system planets.
 
@@ -46,6 +45,7 @@ class direct_pl2pl_mod(_direct_base):
             - hf (``bool``): High-fidelity. Activates a continuous representation for the thrust.
         """
         # Init args
+        self.i=0
         self.args = defaults
         for arg in self.args:
             if arg in kwargs:
@@ -92,7 +92,7 @@ class direct_pl2pl_mod(_direct_base):
         # final mass
         mf = z[2]
 
-        # controls: 60 element vector, probably containing ux, uy, uz for each segment
+        # controls: 60 element vector, containing ux, uy, uz for each segment
         u = z[9:]
 
         # compute Cartesian states of planets
@@ -131,13 +131,31 @@ class direct_pl2pl_mod(_direct_base):
         v_arr_con /= pk.EARTH_VELOCITY ** 2
 
         return np.hstack(([self.obj_func(z)], ceq, cineq, [v_dep_con, v_arr_con]))
-
+    
     def obj_func(self, z):
-        # z = t0, tof, mf, [vinf_0], [vinf_f], [u]
+        self.i+=1
         tof, mf = z[1:3]
-        tf = tof + z[0]
-        mpow = pw2m(self.power, tf, planet='mars')
-        mt = mf + mpow
+        if self.i > 10000000: # Early calculations tend to have infinite power masses
+            tf = tof + z[0]
+            u = z[9:]
+            pow = [self.power*(u[i]**2 + u[i+1]**2 + u[i+2]**2)**0.5 for i in range(0,len(u),3)]
+            # get states
+            x = list(self.leg.get_states())[2] # <-- Big delay! And really costly. Let's use an approximate method
+            import matplotlib.pyplot as plt
+            # remove matchpoint duplicate
+            x.pop(self.nseg)
+            # convert to numpy.ndarray
+            x = np.asarray(x, np.float64)
+            x.reshape((self.nseg * 2 + 1, 3))
+            r = [(x[i][0]**2 + x[i][1]**2 + x[i][2]**2)**0.5 for i in range(0,len(x),3)]
+            time.sleep(3)
+            masses = [pw2m(pow[i], tof, r[i]) for i in range(len(r))]
+            mpow = min(200,max(masses))
+            mt = mf + mpow
+        else:
+            if self.i%50000==0:
+                print(f"{self.i} iterations!!!!")
+            return -mf
         # Convert from power to general mass
         return -(self.w_mass*mt + self.w_tof*tof)
     
@@ -165,18 +183,47 @@ class direct_pl2pl_mod(_direct_base):
         pk.orbit_plots.plot_planet(
             self.pf, tf, units=units, color=(0.8, 0.8, 0.8), axes=axis)
 
+    def pretty(self, z):
+        """
+        pretty(x)
+
+        Args:
+            - x (``list``, ``tuple``, ``numpy.ndarray``): Decision chromosome, e.g. (``pygmo.population.champion_x``).
+
+        Prints human readable information on the trajectory represented by the decision vector x
+        """
+        data = self.get_traj(z)
+        result = self._pretty(z)
+        
+        sun_pos = (data[-1, 1], data[-1, 2], data[-1, 3])
+        sun_speed = (data[-1, 4], data[-1, 5], data[-1, 6])
+        result += ("\nSpacecraft Initial Mass  (kg)    : {!r}".format(data[0, 7]))
+        result += ("\nSpacecraft Final Mass  (kg)    : {!r}".format(data[-1, 7]))
+        result += ("\nSpacecraft Initial Position (m)  : [{!r}, {!r}, {!r}]".format(
+            data[0, 1], data[0, 2], data[0, 3]))
+        result += ("\nSpacecraft Initial Velocity (m/s): [{!r}, {!r}, {!r}]".format(
+            data[0, 4], data[0, 5], data[0, 6]))
+        result += ("\nSpacecraft Final Position (m)  : [{!r}, {!r}, {!r}]".format(
+            *sun_pos))
+        result += ("\nSpacecraft Final Velocity (m/s): [{!r}, {!r}, {!r}]".format(
+            *sun_speed))
+        
+        return result
+    
     def _pretty(self, z):
-        print("\nLow-thrust NEP transfer from " +
+        result = ""
+        result += ("\nLow-thrust NEP transfer from " +
               self.p0.name + " to " + self.pf.name)
-        print("\nLaunch epoch: {!r} MJD2000, a.k.a. {!r}".format(
+        result += ("\nLaunch epoch: {!r} MJD2000, a.k.a. {!r}".format(
             z[0], pk.epoch(z[0])))
-        print("Arrival epoch: {!r} MJD2000, a.k.a. {!r}".format(
+        result += ("\nArrival epoch: {!r} MJD2000, a.k.a. {!r}".format(
             z[0] + z[1], pk.epoch(z[0] + z[1])))
-        print("Time of flight (days): {!r} ".format(z[1]))
-        print("\nLaunch DV (km/s) {!r} - [{!r},{!r},{!r}]".format(np.sqrt(
+        result += ("\nTime of flight (days): {!r} ".format(z[1]))
+        result += ("\nLaunch DV (km/s) {!r} - [{!r},{!r},{!r}]".format(np.sqrt(
             z[3]**2 + z[4]**2 + z[5]**2) / 1000, z[3] / 1000, z[4] / 1000, z[5] / 1000))
-        print("Arrival DV (km/s) {!r} - [{!r},{!r},{!r}]".format(np.sqrt(
+        result += ("\nArrival DV (km/s) {!r} - [{!r},{!r},{!r}]".format(np.sqrt(
             z[6]**2 + z[7]**2 + z[8]**2) / 1000, z[6] / 1000, z[7] / 1000, z[8] / 1000))
+        return result
 
     @staticmethod
     def _get_controls(z):

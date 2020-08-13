@@ -3,3 +3,5 @@
 .pydevproject
 .settings/
 .settings/*
+output/*
+output/*/
