@@ -1,5 +1,6 @@
 import argparse
 import logging
+import pykep
 import pykep.trajopt as tropt
 from pykep.examples import add_gradient, algo_factory
 import yaml
@@ -32,6 +33,10 @@ logger = logging.getLogger(__name__)
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 possible_models = ['BHT-1500']
+MAX_MASSF_DISCREPANCY = 0.1 # If the final mass encountered is within less than x per unit of a given final mass, we discard the iteration
+
+def m_ratio_to_dv(m_ratio, isp=1915):
+    return math.log(m_ratio)*pykep.G0*isp
 
 def create_dir(output):
     try:
@@ -95,54 +100,71 @@ def main(args):
         et_mode = engine.modes[args.mode]
         logger.debug(f"You've chosen {args.model} at mode {et_mode}")
         _, args.thrust, args.isp = et_mode
-    done = False
-    while not done:
-        algo = algo_factory("slsqp")
-        earth_to_mars = add_gradient(tropt_mod.direct_pl2pl_mod(p0=dep,
-                                           pf=tgt,
-                                           mass=args.mass,
-                                           thrust=args.thrust,
-                                           isp=args.isp,
-                                           nseg=args.nseg,
-                                           t0=args.t0,
-                                           tof=args.tof,
-                                           vinf_dep=args.vinf_dep,
-                                           vinf_arr=args.vinf_arr,
-                                           hf=False),
-                                    with_grad=True)
-        prob = pg.problem(earth_to_mars)
-        prob.c_tol = [1e-5] * prob.get_nc()
-        pop = pg.population(prob, 1)
-        start = time.time()
-        pop = algo.evolve(pop)
-        logger.info(f"Time elapsed: {(time.time() - start):.3f}")
-        if prob.feasibility_x(pop.champion_x):
-            logger.info("OPTIMAL FOUND!")
-            done = True
-        else:
-            logger.info("No solution found, try again")
-#TODO: VERIFY THAT DISTANCES OUTPUT BY GET STATES ARE WRT SUN AND NOT EARTH. TRY TO DERIVE A SIMPLE RULE THAT ALLOWS YOU TO OBTAIN
-# DISTANCES WITHOUT PASSING THROUGH LEG.GET_STATES()!!!!!
-        results = earth_to_mars.udp_inner.pretty(pop.champion_x)
-        x = earth_to_mars.udp_inner.leg.get_states()[2]
-        # remove matchpoint duplicate
-        x.pop(args.nseg)
-        # convert to numpy.ndarray
-        x = np.asarray(x, np.float64)
-        x.reshape((args.nseg * 2 + 1, 3))
-        r = [(x[i][0]**2 + x[i][1]**2 + x[i][2]**2)**0.5 for i in range(0,len(x),3)]
-        plt.plot(range(len(r)), r)
+    
+    run_results = {}
+    for n in range(args.n_runs):
+        logger.info(f"Launching run {n}")
+        og_output = args.output
+        args.output += f"/run{n}"
+        done = False
+        while not done:
+            algo = algo_factory("slsqp")
+            earth_to_mars = add_gradient(tropt_mod.direct_pl2pl_mod(p0=dep,
+                                               pf=tgt,
+                                               mass=args.mass,
+                                               thrust=args.thrust,
+                                               isp=args.isp,
+                                               nseg=args.nseg,
+                                               t0=args.t0,
+                                               tof=args.tof,
+                                               vinf_dep=args.vinf_dep,
+                                               vinf_arr=args.vinf_arr,
+                                               hf=False,
+                                               w_mass=args.w_mass,
+                                               w_tof=(1-args.w_mass)),
+                                        with_grad=True)
+            prob = pg.problem(earth_to_mars)
+            prob.c_tol = [1e-5] * prob.get_nc()
+            pop = pg.population(prob, 1)
+            start = time.time()
+            pop = algo.evolve(pop)
+            logger.info(f"Time elapsed: {(time.time() - start):.3f}")
+            if prob.feasibility_x(pop.champion_x):
+                logger.info("OPTIMAL FOUND!")
+                done = True
+            else:
+                logger.info("No solution found, try again")
+    #TODO: TRY TO DERIVE A SIMPLE RULE THAT ALLOWS YOU TO OBTAIN
+    # DISTANCES WITHOUT PASSING THROUGH LEG.GET_STATES()!!!!!
+            results = earth_to_mars.udp_inner.pretty(pop.champion_x)
+            
+            tof, mf = pop.champion_x[1:3]
+            if abs(mf-args.final_mass) >= MAX_MASSF_DISCREPANCY*args.final_mass: #If the difference is too large
+                logger.info(f"Run discarded due to large mass discrepancy. "
+                            f"Final mass obtained: {mf}. Specified final mass: {args.final_mass}")
+                done = False
+            else:
+                true_initial_mass = args.final_mass*args.mass/mf
+                run_results[n] = (tof, true_initial_mass)
+        f = open(args.output + "/solution.txt", 'w')
+        f.write(results)
+        f.close()
+        earth_to_mars.udp_inner.plot_traj(pop.champion_x)
+        plt.title("The trajectory in the heliocentric frame")
+        earth_to_mars.udp_inner.plot_control(pop.champion_x)
+        plt.title("The control profile (throttle)")
+        plt.savefig(args.output + "/plots.png", )
         plt.show()
-    f = open(args.output + "/solution.txt", 'w')
-    f.write(results)
+        
+        args.output = og_output
+        
+    run_results_str = "run, tof, wet mass"
+    run_results_list = [f"\n{n}, {tof}, {m0}" for n, (tof, m0) in run_results.items()]
+    run_results_str += "".join(run_results_list)
+    f = open(args.output + "/run_results.txt", 'w')
+    f.write(run_results_str)
     f.close()
-    earth_to_mars.udp_inner.plot_traj(pop.champion_x)
-    plt.title("The trajectory in the heliocentric frame")
-    earth_to_mars.udp_inner.plot_control(pop.champion_x)
-    plt.title("The control profile (throttle)")
- 
-    plt.show()
-
+        
 if __name__ == "__main__":
     
     et_models = load_engines("data/engines.yaml")
@@ -160,8 +182,10 @@ if __name__ == "__main__":
     )
     # SPACECRAFT
     spacecraft_options = parser.add_argument_group("Spacecraft options")
-    spacecraft_options.add_argument("--mass", type=float, default=420,
+    spacecraft_options.add_argument("--mass", type=float, default=755,
                         help="Wet mass of the spacecraft upon TMI")
+    spacecraft_options.add_argument("--final_mass", type=float, default=425,
+                        help="Final mass of the spacecraft after transfer")
     # ENGINE
     engine_options = parser.add_argument_group("Engine options")
     engine_options.add_argument("--thrust", type=float, default=0.102,
@@ -186,10 +210,15 @@ if __name__ == "__main__":
                                     help="Allowed v infinity for Earth departure")
     trajectory_options.add_argument("--vinf_arr", type=float, default=1e-3,
                                     help="Allowed v infinity for Mars arrival")
-    # TRAJECTORY
+    # Optimization
     optimizer_options = parser.add_argument_group("Optimizer options")
     optimizer_options.add_argument("--nseg", type=int, default=20,
                                     help="Number of calculation segments")
+    optimizer_options.add_argument("--n_runs", type=int, default=4,
+                                    help="Number of simulations to be repeated")
+    optimizer_options.add_argument("--w_mass", type=float, default=0.5,
+                                    help="Weight of the mass objective relative to the total optimization"\
+                                    +"the weight of the time of flight is 1 - w_mass. Default 0.5")
     args = parser.parse_args()
     
     log_level = getattr(logging, args.log_level.upper())

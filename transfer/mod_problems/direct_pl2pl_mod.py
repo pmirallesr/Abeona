@@ -135,29 +135,21 @@ class direct_pl2pl_mod(_direct_base):
     def obj_func(self, z):
         self.i+=1
         tof, mf = z[1:3]
-        if self.i > 10000000: # Early calculations tend to have infinite power masses
-            tf = tof + z[0]
-            u = z[9:]
-            pow = [self.power*(u[i]**2 + u[i+1]**2 + u[i+2]**2)**0.5 for i in range(0,len(u),3)]
-            # get states
-            x = list(self.leg.get_states())[2] # <-- Big delay! And really costly. Let's use an approximate method
-            import matplotlib.pyplot as plt
-            # remove matchpoint duplicate
-            x.pop(self.nseg)
-            # convert to numpy.ndarray
-            x = np.asarray(x, np.float64)
-            x.reshape((self.nseg * 2 + 1, 3))
-            r = [(x[i][0]**2 + x[i][1]**2 + x[i][2]**2)**0.5 for i in range(0,len(x),3)]
-            time.sleep(3)
-            masses = [pw2m(pow[i], tof, r[i]) for i in range(len(r))]
-            mpow = min(200,max(masses))
-            mt = mf + mpow
-        else:
-            if self.i%50000==0:
-                print(f"{self.i} iterations!!!!")
-            return -mf
-        # Convert from power to general mass
-        return -(self.w_mass*mt + self.w_tof*tof)
+        u = z[9:]
+        pwr = [self.power*(u[i]**2 + u[i+1]**2 + u[i+2]**2)**0.5 for i in range(0,len(u),3)]
+        # get states
+#             x = list(self.leg.get_states())[2] # <-- Big delay! And really costly. Let's use an approximate method
+#             # remove matchpoint duplicate
+#             x.pop(self.nseg)
+#             # convert to numpy.ndarray
+#             x = np.asarray(x, np.float64)
+#             x.reshape((self.nseg * 2 + 1, 3))
+#             r = [(x[i][0]**2 + x[i][1]**2 + x[i][2]**2)**0.5/pk.AU for i in range(0,len(x),3)]
+        r = [1 for _ in pwr[:-6]] +  [1.6 for _ in pwr[-6:]]
+        masses = [pw2m(pwr[i], tof, r[i]) for i in range(len(r))]
+        mpow = min(200,max(masses))
+        mt = mf + mpow
+        return self.w_tof*tof/(self.tof[1]-self.tof[0]) - self.w_mass*mt/self.sc.mass #Min tof while max mass
     
     def get_nic(self):
         return super().get_nic() + 2
