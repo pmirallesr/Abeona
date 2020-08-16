@@ -1,0 +1,1 @@
+{'log_level': 'info', 'output': 'output/0815-2124', 'mass': 1000, 'final_mass': 400, 'thrust': 0.102, 'isp': 1915, 'model': 'BHT-1500', 'mode': 0, 'list_modes': False, 't0': [9497, 10000], 'tof': [100, 4000], 'vinf_dep': 0.001, 'vinf_arr': 0.001, 'nseg': 20, 'n_runs': 4, 'w_mass': 0.05}

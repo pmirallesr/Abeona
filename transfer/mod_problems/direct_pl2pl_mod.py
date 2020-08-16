@@ -2,6 +2,7 @@ from pykep.trajopt._direct import _direct_base
 import pykep as pk
 import numpy as np
 from utils.pow_to_mass import pow_to_mass as pw2m
+from utils.pow_to_mass import min_panel_mass
 import time
 defaults = {
     "w_mass": 0.5, "w_tof":0.5,
@@ -145,11 +146,17 @@ class direct_pl2pl_mod(_direct_base):
 #             x = np.asarray(x, np.float64)
 #             x.reshape((self.nseg * 2 + 1, 3))
 #             r = [(x[i][0]**2 + x[i][1]**2 + x[i][2]**2)**0.5/pk.AU for i in range(0,len(x),3)]
+        # We approximate distance as a piecewise function to accelerate the opt procedure
         r = [1 for _ in pwr[:-6]] +  [1.6 for _ in pwr[-6:]]
         masses = [pw2m(pwr[i], tof, r[i]) for i in range(len(r))]
         mpow = min(200,max(masses))
-        mt = mf + mpow
-        return self.w_tof*tof/(self.tof[1]-self.tof[0]) - self.w_mass*mt/self.sc.mass #Min tof while max mass
+        mprop = self.sc.mass - mf 
+        transfer_mass = mprop + mpow - min_panel_mass # We don't penalize the essential panel mass
+        # 0 if we arrive in min time, 1 if we arrive in max time
+        weighted_tof_score = self.w_tof*(tof-self.tof[0])/(self.tof[1]-self.tof[0]) 
+        # 0 if all mass is dry, 1 if all mass is prop or power
+        weighted_mass_score = self.w_mass*transfer_mass/self.sc.mass 
+        return weighted_tof_score + weighted_mass_score
     
     def get_nic(self):
         return super().get_nic() + 2

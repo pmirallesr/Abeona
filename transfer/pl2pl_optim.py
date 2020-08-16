@@ -106,7 +106,9 @@ def main(args):
         logger.info(f"Launching run {n}")
         og_output = args.output
         args.output += f"/run{n}"
+        os.makedirs(args.output, exist_ok=True)
         done = False
+        c=0 # Counter of discarded runs
         while not done:
             algo = algo_factory("slsqp")
             earth_to_mars = add_gradient(tropt_mod.direct_pl2pl_mod(p0=dep,
@@ -133,36 +135,53 @@ def main(args):
                 logger.info("OPTIMAL FOUND!")
                 done = True
             else:
-                logger.info("No solution found, try again")
-    #TODO: TRY TO DERIVE A SIMPLE RULE THAT ALLOWS YOU TO OBTAIN
-    # DISTANCES WITHOUT PASSING THROUGH LEG.GET_STATES()!!!!!
+                logger.info("No solution found, trying again")
+                c+=1
+                logger.info(f"{c} runs discarded")
+                continue
             results = earth_to_mars.udp_inner.pretty(pop.champion_x)
             
             tof, mf = pop.champion_x[1:3]
-            if abs(mf-args.final_mass) >= MAX_MASSF_DISCREPANCY*args.final_mass: #If the difference is too large
-                logger.info(f"Run discarded due to large mass discrepancy. "
-                            f"Final mass obtained: {mf}. Specified final mass: {args.final_mass}")
+            #If the difference is too large, repeat. We only care about cases were mf < final_mass
+            if args.final_mass - mf >= MAX_MASSF_DISCREPANCY*args.final_mass: 
+                logger.info(f"-"*60 + "\n"
+                            f"Run discarded due to large mass discrepancy. \n"
+                            f"Initial mass: {args.mass} \n"
+                            f"Final mass obtained: {mf}. Specified final mass: {args.final_mass}\n"
+                            + results + f"-"*60)
+                c+=1
+                logger.info(f"{c} runs discarded")
                 done = False
             else:
                 true_initial_mass = args.final_mass*args.mass/mf
+                logger.info(results)
                 run_results[n] = (tof, true_initial_mass)
         f = open(args.output + "/solution.txt", 'w')
         f.write(results)
+        f.write("-"*100)
+        f.write(str(pop.champion_x))
         f.close()
         earth_to_mars.udp_inner.plot_traj(pop.champion_x)
         plt.title("The trajectory in the heliocentric frame")
+        plt.savefig(args.output + "/trajectory.png")
         earth_to_mars.udp_inner.plot_control(pop.champion_x)
         plt.title("The control profile (throttle)")
-        plt.savefig(args.output + "/plots.png", )
-        plt.show()
+        plt.savefig(args.output + "/throttle.png")
+#         plt.show()
         
         args.output = og_output
         
-    run_results_str = "run, tof, wet mass"
-    run_results_list = [f"\n{n}, {tof}, {m0}" for n, (tof, m0) in run_results.items()]
+       
+    run_results_str = " run, tof, wet mass"
+    run_results_list = [f"\n {n}, {tof}, {m0}" for n, (tof, m0) in run_results.items()]
     run_results_str += "".join(run_results_list)
     f = open(args.output + "/run_results.txt", 'w')
     f.write(run_results_str)
+    results_array = np.array(list(run_results.values()))
+    tof_avg, m0_avg = results_array.mean(0)
+    f.write(f"\n mean {tof_avg}, {m0_avg}")
+    tof_std, m0_std = results_array.std(0)
+    f.write(f"\n std {tof_std}, {m0_std}")
     f.close()
         
 if __name__ == "__main__":
@@ -182,7 +201,7 @@ if __name__ == "__main__":
     )
     # SPACECRAFT
     spacecraft_options = parser.add_argument_group("Spacecraft options")
-    spacecraft_options.add_argument("--mass", type=float, default=755,
+    spacecraft_options.add_argument("--mass", type=float, default=1000,
                         help="Wet mass of the spacecraft upon TMI")
     spacecraft_options.add_argument("--final_mass", type=float, default=425,
                         help="Final mass of the spacecraft after transfer")
@@ -217,8 +236,8 @@ if __name__ == "__main__":
     optimizer_options.add_argument("--n_runs", type=int, default=4,
                                     help="Number of simulations to be repeated")
     optimizer_options.add_argument("--w_mass", type=float, default=0.5,
-                                    help="Weight of the mass objective relative to the total optimization"\
-                                    +"the weight of the time of flight is 1 - w_mass. Default 0.5")
+                                    help="Weight of the mass objective relative to the total optimization. \n"\
+                                    +"The weight of the time of flight is 1 - w_mass. Default 0.5")
     args = parser.parse_args()
     
     log_level = getattr(logging, args.log_level.upper())
@@ -233,7 +252,7 @@ if __name__ == "__main__":
     f = open(args.output + "/args.txt", 'w')
     f.write(str(vars(args)))
     f.close()
-    
+
     main(args)
     print_args(args, et_models)
     
