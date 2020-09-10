@@ -130,6 +130,7 @@ def main(args):
             pop = pg.population(prob, 1)
             start = time.time()
             pop = algo.evolve(pop)
+            traj = earth_to_mars.udp_inner.get_traj(pop.champion_x)
             logger.info(f"Time elapsed: {(time.time() - start):.3f}")
             if prob.feasibility_x(pop.champion_x):
                 logger.info("OPTIMAL FOUND!")
@@ -153,13 +154,28 @@ def main(args):
                 logger.info(f"{c} runs discarded")
                 done = False
             else:
+                traj = earth_to_mars.udp_inner.get_traj(pop.champion_x)
                 true_initial_mass = args.final_mass*args.mass/mf
                 logger.info(results)
                 run_results[n] = (tof, true_initial_mass)
-        f = open(args.output + "/solution.txt", 'w')
+        # Result summary
+        f = open(args.output + "/summary.txt", 'w')
         f.write(results)
-        f.write("-"*100)
+        f.close()
+        # Solution
+        f = open(args.output + "/solution.txt", 'w')
         f.write(str(pop.champion_x))
+        f.close()
+        # Controls
+        f = open(args.output + "/controls.csv", 'w')
+        f.write(z_to_controls(pop.champion_x))
+        f.close()
+        # Trajectory
+        traj = traj[:, 0:4] # Retrieve positions only?
+        # convert to numpy.ndarray
+        traj = np.asarray(traj, np.float64)
+        f = open(args.output + "/positions.csv", 'w')
+        f.write(traj_to_pos(traj))
         f.close()
         earth_to_mars.udp_inner.plot_traj(pop.champion_x)
         plt.title("The trajectory in the heliocentric frame")
@@ -183,14 +199,45 @@ def main(args):
     tof_std, m0_std = results_array.std(0)
     f.write(f"\n std {tof_std}, {m0_std}")
     f.close()
-        
+    
+def z_to_controls(z):
+    u = z[9:]
+    result_str = "Ux, Uy, Uz, Umag"
+    temp = [f"\n {u[i]}, {u[i+1]}, {u[i+2]}, {(u[i]**2 + u[i+1]**2 + u[i+2]**2)**0.5}" for i in range(0, len(u), 3)]
+    result_str += "".join(temp)
+    return result_str
+def traj_to_pos(traj):
+    result_str = "With respect to sun"
+    result_str += "\nt, X, Y, Z, R"
+    temp = [f"\n {traj[i, 0]}, "
+            f"{traj[i, 1]}, "
+            f"{traj[i, 2]}, "
+            f"{traj[i, 3]}, "
+            f"{np.linalg.norm(traj[i,1:4])}" for i in range(len(traj))]
+    result_str += "".join(temp)
+    result_str += "\nWith respect to Earth"
+    earth = pykep.planet.jpl_lp('earth')
+    traj_wrt_earth = traj
+    for i in range(len(traj)):
+        t_i = traj[i,0]
+        earth_eph = earth.eph(t_i)
+        earth_pos = np.array(earth_eph[0])
+        traj_wrt_earth[i,1:4] = traj[i, 1:4] -  earth_pos
+    temp = [f"\n {traj_wrt_earth[i, 0]}, "
+            f"{traj_wrt_earth[i, 1]}, "
+            f"{traj_wrt_earth[i, 2]}, "
+            f"{traj_wrt_earth[i, 3]}, "
+            f"{np.linalg.norm(traj_wrt_earth[i,1:4])}" for i in range(len(traj_wrt_earth))]
+    result_str += "".join(temp)
+    return result_str
+
 if __name__ == "__main__":
     
     et_models = load_engines("data/engines.yaml")
     
     logger = logging.getLogger()
     # PROGRAM
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         "--log_level", default="info", type=str,
         help="Set to off, info, or debug to control verbosity"
@@ -214,12 +261,12 @@ if __name__ == "__main__":
     engine_options.add_argument("--model", default=None,
                     help=f"Select a model amongst: {list(et_models.keys())}. Overrides thrust and isp settings")
     engine_options.add_argument("--mode", type=int, default=0,
-                    help="Engine mode during tranfer. Necessary only if a model was selected. 0 is the default mode")
+                    help="Engine mode during tranfer. Necessary only if a model was selected.")
     engine_options.add_argument("--list_modes", action='store_true',
                     help="List available modes for the selected model. Will do that instead of running program")
     # TRAJECTORY
     trajectory_options = parser.add_argument_group("Trajectory options")
-    trajectory_options.add_argument("--t0", nargs=2, type=int, default=[9497, 10000],
+    trajectory_options.add_argument("--t0", nargs=2, type=int, default=[9497, 10287],
                                     help="Start and end bound dates for the start of the trajectory." +
                                     " The optimization explores dates lying between the two.")
     trajectory_options.add_argument("--tof", nargs=2, type=int, default=[200, 500],
@@ -237,7 +284,7 @@ if __name__ == "__main__":
                                     help="Number of simulations to be repeated")
     optimizer_options.add_argument("--w_mass", type=float, default=0.5,
                                     help="Weight of the mass objective relative to the total optimization. \n"\
-                                    +"The weight of the time of flight is 1 - w_mass. Default 0.5")
+                                    +"The weight of the time of flight is 1 - w_mass.")
     args = parser.parse_args()
     
     log_level = getattr(logging, args.log_level.upper())

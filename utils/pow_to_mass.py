@@ -8,6 +8,9 @@ min_panel_mass = 50 # Minimum panel mass stemming from other requirements
 inherent_degradation = 0.23 # Inherent loss of efficiency from construction losses
 packaging_loss = 0.1 # Losses from imperfect packaging
 surface_density = 5.06 # kg/m2
+extra_propellant_factor = 0.15 # Every kg of solar panels costs us extra propellant mass in later maneuvers. 0.15 kg as of 5/9/2020
+
+#TODO: IS THIS CORRECTLY ADDED TO THE OBJECTIVE FUNCTION?
 
 def pow_to_mass(power, tof, d):
     """
@@ -21,12 +24,9 @@ def pow_to_mass(power, tof, d):
         t0: Date of mission start. 1 April 2026 by default
     """
     m_ancillary = POWER_ANCILLARY*power
-    return m_ancillary + pow_to_panel_mass(power, tof, d) # 
-#     else:
-#         planet = pk.planet.jpl_lp(planet)
-#         x = planet.eph(t0)[0]
-#         d = np.linalg.norm(x)/pk.AU
-#         return m_ancillary + pow_to_panel_mass(power, t, d) # 
+    m_solar = pow_to_panel_mass(power, tof, d)
+    m_power = (1+extra_propellant_factor)*(m_ancillary+m_solar)
+    return m_power 
 
 
 def pow_to_panel_mass(power, tof, d):
